@@ -8,8 +8,10 @@ import com.morpheusdata.core.backup.DefaultBackupJobProvider
 import com.morpheusdata.core.backup.BackupTypeProvider
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.BackupProviderType
+import com.morpheusdata.model.Backup
 import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
+import com.morpheusdata.response.BackupDetailField
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.rubrik.services.ApiService
 import com.morpheusdata.rubrik.services.SlaDomainService
@@ -181,6 +183,41 @@ class RubrikBackupProvider extends AbstractBackupProvider {
 	Collection<OptionType> getInstanceReplicationGroupOptionTypes() {
 		Collection<OptionType> optionTypes = new ArrayList()
 		return optionTypes;
+	}
+
+	@Override
+	Collection<BackupDetailField> getBackupDetailFields(Backup backup) {
+		Collection<BackupDetailField> fields = new ArrayList<>()
+		try {
+			def slaDomainId = backup?.getConfigProperty('rubrikSlaDomain')
+			if(slaDomainId) {
+				String slaDomainName
+				if(slaDomainId == 'UNPROTECTED') {
+					slaDomainName = 'Unprotected'
+				} else if(slaDomainId == 'INHERIT') {
+					slaDomainName = 'Inherit from Parent'
+				} else {
+					def slaDomain = morpheus.async.referenceData.get(slaDomainId.toLong()).blockingGet()
+					slaDomainName = slaDomain?.name
+				}
+				if(slaDomainName) {
+					fields << new BackupDetailField('gomorpheus.label.slaDomain', slaDomainName)
+				}
+			}
+		} catch(e) {
+			log.error("getBackupDetailFields error: ${e}", e)
+		}
+		return fields
+	}
+
+	/**
+	 * Rubrik creates transient NFS datastores (prefixed with 'rubrik_') on hosts/clusters while a VM is live-mounted
+	 * for instant recovery or file-level restore operations. These datastores should never be presented to end users
+	 * as selectable/provisionable datastores.
+	 */
+	@Override
+	Boolean shouldExcludeDatastore(String datastoreName) {
+		return datastoreName?.startsWith('rubrik_') ?: false
 	}
 
 
